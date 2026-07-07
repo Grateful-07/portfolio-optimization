@@ -1,7 +1,33 @@
-import numpy as np
+import os
 import pandas as pd
-from statsmodels.tsa.arima.model import ARIMA
-import pickle
+import numpy as np
+from scipy.optimize import minimize  # Or your updated Monte Carlo version
+
+# ==========================================
+# 2. NEW ERROR HANDLING LAYER (Add this here!)
+# ==========================================
+def safe_load_processed_data(file_path, is_forecast=False):
+    """
+    Systematic error handling layer ensuring file existence,
+    proper data types, and structural alignment before matrix execution.
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"❌ Core Pipeline Error: Target file missing at {file_path}. Execute upstream notebook tasks first.")
+        
+    try:
+        if is_forecast:
+            # Handle string parsing vulnerabilities explicitly
+            df = pd.read_csv(file_path, header=None, names=['Date', 'Price'])
+            df['Price'] = pd.to_numeric(df['Price'], errors='coerce')
+            df = df.dropna().reset_index(drop=True)
+            return df
+        else:
+            df = pd.read_csv(file_path, index_col=0, parse_dates=True)
+            if df.isnull().values.any():
+                df = df.ffill().bfill()  # Defensive filling against missing values
+            return df
+    except Exception as e:
+        raise TypeError(f"❌ Data Type Alignment Error parsing {os.path.basename(file_path)}: {str(e)}")
 
 def split_time_series_data(df, target_col='TSLA', split_date='2025-01-01'):
     """
