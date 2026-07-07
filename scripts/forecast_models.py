@@ -119,3 +119,37 @@ def generate_future_forecast(fitted_arima, test_series, steps=180, confidence_le
     ci_df.index = future_dates
     
     return forecast_mean, ci_df
+from scipy.optimize import minimize
+
+def calculate_portfolio_performance(weights, expected_returns, cov_matrix):
+    """
+    Calculates annualized expected return, annualized volatility, and Sharpe Ratio.
+    Assumes 252 trading days per year and a 0% risk-free rate.
+    """
+    portfolio_return = np.dot(weights, expected_returns)
+    portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights))) * np.sqrt(252)
+    sharpe_ratio = portfolio_return / portfolio_volatility if portfolio_volatility != 0 else 0
+    return portfolio_return, portfolio_volatility, sharpe_ratio
+
+def optimize_portfolio(expected_returns, cov_matrix, objective='sharpe'):
+    """
+    Uses scipy.optimize to find either the Max Sharpe or Min Volatility portfolio weights.
+    """
+    num_assets = len(expected_returns)
+    init_weights = np.array([1 / num_assets] * num_assets)
+    bounds = tuple((0, 1) for _ in range(num_assets))  # Long-only constraints
+    constraints = ({'type': 'eq', 'fun': lambda w: np.sum(w) - 1}) # Weights must sum to 1
+    
+    if objective == 'sharpe':
+        # Minimize negative Sharpe to maximize true Sharpe
+        def objective_func(weights):
+            _, _, sharpe = calculate_portfolio_performance(weights, expected_returns, cov_matrix)
+            return -sharpe
+    else:
+        # Minimize portfolio volatility
+        def objective_func(weights):
+            _, vol, _ = calculate_portfolio_performance(weights, expected_returns, cov_matrix)
+            return vol
+
+    result = minimize(objective_func, init_weights, method='SLSQP', bounds=bounds, constraints=constraints)
+    return result.x
