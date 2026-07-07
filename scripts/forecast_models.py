@@ -96,3 +96,26 @@ def train_complete_lstm(train_series, test_series, window_size=60):
         smoothed_preds[i] = alpha * final_preds[i] + (1 - alpha) * test_series.values[i-1]
         
     return pd.Series(smoothed_preds, index=test_series.index), "NumPy-Recurrent-LSTM-Engine"
+def generate_future_forecast(fitted_arima, test_series, steps=180, confidence_level=0.95):
+    """
+    Generates out-of-sample future forecasts with mathematical expanding confidence intervals.
+    180 steps approximately models a 6-month trading window (or ~252 for a full year).
+    """
+    print(f"Generating out-of-sample future forecast for {steps} trading days...")
+    
+    # 1. Generate forecasts starting right where the test set ends
+    forecast_obj = fitted_arima.get_forecast(steps=steps)
+    forecast_mean = forecast_obj.predicted_mean
+    
+    # 2. Extract confidence intervals matrix
+    alpha = 1 - confidence_level
+    ci_df = forecast_obj.conf_int(alpha=alpha)
+    
+    # 3. Create a clean future date index starting from the day after the last test date
+    future_dates = pd.date_range(start=test_series.index[-1] + pd.Timedelta(days=1), 
+                                  periods=steps, freq='B')
+    
+    forecast_mean.index = future_dates
+    ci_df.index = future_dates
+    
+    return forecast_mean, ci_df
