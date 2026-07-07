@@ -168,3 +168,58 @@ def optimize_portfolio(expected_returns, cov_matrix, objective='sharpe'):
             optimal_weights = w
             
     return optimal_weights
+def run_portfolio_backtest(returns_df, weights, benchmark_weights={'SPY': 0.60, 'BND': 0.40}, start_date='2025-01-01', end_date='2026-01-01'):
+    """
+    Simulates cumulative returns and computes professional backtesting metrics:
+    Total Return, Annualized Return, Sharpe Ratio, and Maximum Drawdown.
+    """
+    # Filter the dataset for the designated out-of-sample backtesting window
+    window_returns = returns_df[(returns_df.index >= start_date) & (returns_df.index <= end_date)].copy()
+    
+    # 1. Calculate Daily Strategy Returns (Weights: BND, SPY, TSLA)
+    strategy_daily = (window_returns['BND'] * weights[0] + 
+                      window_returns['SPY'] * weights[1] + 
+                      window_returns['TSLA'] * weights[2])
+    
+    # 2. Calculate Daily Benchmark Returns (60% SPY / 40% BND)
+    benchmark_daily = (window_returns['SPY'] * benchmark_weights['SPY'] + 
+                       window_returns['BND'] * benchmark_weights['BND'])
+    
+    # 3. Compute Cumulative Compound Growth Profiles
+    strategy_cum = (1 + strategy_daily).cumprod() - 1
+    benchmark_cum = (1 + benchmark_daily).cumprod() - 1
+    
+    def compute_metrics(daily_series, cum_series):
+        total_return = cum_series.iloc[-1]
+        days = len(daily_series)
+        annualized_return = (1 + total_return) ** (252 / days) - 1
+        
+        # Risk profiles
+        vol = daily_series.std() * np.sqrt(252)
+        sharpe = annualized_return / vol if vol > 0 else 0
+        
+        # Maximum Drawdown tracking peak-to-trough drops
+        running_wealth = (1 + daily_series).cumprod()
+        running_peaks = running_wealth.cummax()
+        drawdowns = (running_wealth - running_peaks) / running_peaks
+        max_dd = drawdowns.min()
+        
+        return {
+            "Total Return": f"{total_return*100:.2f}%",
+            "Annualized Return": f"{annualized_return*100:.2f}%",
+            "Sharpe Ratio": round(sharpe, 2),
+            "Max Drawdown": f"{max_dd*100:.2f}%"
+        }
+    
+    metrics = {
+        "Optimized Strategy": compute_metrics(strategy_daily, strategy_cum),
+        "Passive Benchmark (60/40)": compute_metrics(benchmark_daily, benchmark_cum)
+    }
+    
+    # Pack returns series for graphing
+    performance_curves = pd.DataFrame({
+        'Strategy': strategy_cum,
+        'Benchmark': benchmark_cum
+    }, index=window_returns.index)
+    
+    return performance_curves, pd.DataFrame(metrics)
